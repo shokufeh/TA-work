@@ -1,0 +1,31 @@
+LOCK = (
+	acquire ->
+	release ->
+	LOCK
+).
+
+THREAD1 = (
+	rs1.acquire ->
+	do_something ->
+	rs2.acquire ->
+	do_something ->
+	rs2.release ->
+	rs1.release ->
+	THREAD1
+).
+
+THREAD2 = (
+	rs2.acquire ->
+	do_something ->
+	rs1.acquire ->
+	do_something ->
+	rs1.release ->
+	rs2.release ->
+	THREAD2
+).
+
+||MAIN = (
+	{th1,th2}::{rs1,rs2}:LOCK ||
+	th1:THREAD1 ||
+	th2:THREAD2
+).

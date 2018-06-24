@@ -1,0 +1,1 @@
+PERSON = (weekday->sleep->work->PERSON|weekend->sleep->{shop,play}->PERSON).

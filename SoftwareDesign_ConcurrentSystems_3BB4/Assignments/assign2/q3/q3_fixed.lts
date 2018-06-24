@@ -1,0 +1,14 @@
+RESOURCE = ( acquire -> release -> RESOURCE).
+
+THREAD1 = (rs1.acquire -> GETSPOON), 
+
+GETSPOON = (rs2.acquire -> use -> rs1.release -> rs2.release -> THREAD1
+			| outoftime -> rs1.release -> THREAD1).
+
+THREAD2 = (rs2.acquire -> GETFORK),
+
+GETFORK = ( rs1.acquire -> use -> rs2.release -> rs1.release -> THREAD2
+			| outoftime -> rs2.release -> THREAD2).
+
+||SYS = ( thread1:THREAD1 || thread2:THREAD2 || {thread1,thread2}::rs1:RESOURCE || {thread1,thread2}::rs2:RESOURCE).
+

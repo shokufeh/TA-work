@@ -1,0 +1,113 @@
+VER=1.8
+
+# Generated C++ source files (to be updated manually)
+GENERATED=fsp_parser.cpp fsp_parser.hpp fsp_scanner.cpp preproc.cpp location.hh position.hh sh_parser.cpp sh_parser.hpp sh_scanner.cpp Makefile.gen
+
+# Non-generated C++ source files (to be updated manually).
+NONGEN=context.hpp context.cpp fspcc.cpp interface.hpp lts.cpp lts.hpp symbols_table.cpp symbols_table.hpp utils.cpp utils.hpp circular_buffer.cpp circular_buffer.hpp serializer.cpp serializer.hpp shell.cpp shell.hpp fsp_driver.cpp fsp_driver.hpp tree.cpp tree.hpp preproc.hpp helpers.cpp helpers.hpp unresolved.cpp unresolved.hpp test-serializer.cpp smart_pointers.hpp smart_pointers.cpp shlex_declaration.hpp fsplex_declaration.hpp sh_driver.cpp sh_driver.hpp code_generator.cpp code_generator.hpp code_generation_framework.cpp code_generation_framework.hpp fspc_experts.hpp scalable_visitor.hpp monitor_analyst.cpp monitor_analyst.hpp java_developer.cpp java_developer.hpp java_templates.hpp
+
+# All the C++ source files.
+SOURCES=$(NONGEN) $(GENERATED)
+
+# All the non-generated files.
+WCIN=$(NONGEN) fsp_scanner.lpp fsp_parser.ypp Makefile.manual preproc.lpp ltsee csee.sh fsp_parser.diff fspcc.1 Makefile.ske sh_scanner.lpp sh_parser.ypp
+
+# The files included in the fspc tarball.
+TAR_CONTENT=$(SOURCES) ltsee csee.sh fsp_parser.diff fspcc.1 Makefile.gen
+
+#REPORT=--report=all
+REPORT=
+
+
+# all should be 'complete' for distributions and 'normal' for development.
+all: complete
+
+# Build the executable using the existing Makefile.gen.
+normal: always $(GENERATED)
+	make -f Makefile.gen
+
+# First regenerate Makefile.gen (which depends on all the sources, including $(GENERATED))
+# and then build the executable.
+# The $(GENERATED) dependency is redundant: it has been added for clarity.
+complete: always $(GENERATED) deps.gv
+	make -f Makefile.gen
+
+# A target that can be used as a dependency so that a rule always fires.
+always:
+
+# Generate Makefile.gen and the GraphViz representation of the include dependencies.
+deps.gv Makefile.gen: $(SOURCES) Makefile.ske
+	python find_deps.py
+
+# Generate the fsp_parser with GNU Bison and apply a simple patch.
+# Unfortunately I couldn't find a way to tell Bison to generate
+# the 'location.hh' and 'position.hh' files into files with different
+# names: For this reason it's necessary to manually rename the files
+# and replace include directives.
+fsp_parser.cpp fsp_parser.hpp location.hh position.hh: fsp_parser.ypp fsp_parser.diff
+	bison $(REPORT) fsp_parser.ypp
+	patch fsp_parser.cpp < fsp_parser.diff
+
+# Generate the fsp_scanner with Flex.
+fsp_scanner.cpp: fsp_scanner.lpp fsp_parser.hpp
+	flex fsp_scanner.lpp
+
+# Generate the preprocessor with Flex.
+preproc.cpp: preproc.lpp
+	flex preproc.lpp
+
+# Generate the shell fsp_parser with GNU Bison.
+sh_parser.cpp sh_parser.hpp: sh_parser.ypp
+	bison $(REPORT) sh_parser.ypp
+
+# Generate the shell fsp_scanner with Flex.
+sh_scanner.cpp: sh_scanner.lpp sh_parser.hpp
+	flex sh_scanner.lpp
+
+# Blackbox test against the testset.
+testing: normal
+	tests/test.sh
+
+ctags: tags
+	ctags -R
+
+clean:
+	-rm *.o fspcc *.out *.orig
+
+# Also remove the generated Makefile.gen.
+cleandist: clean cleanaur clc
+	-rm Makefile.gen $(GENERATED)
+
+# Total number of lines of the non-generated source files.
+lines:
+	wc -l $(WCIN)
+
+# Count the number of generated and non-generated C++ source files
+count:
+	echo "Number of C++ source files manually included"
+	echo $(GENERATED) $(NONGEN) | wc -w
+	echo "Number of C++ source files (check against the previous)"
+	ls *.hpp *.cpp *.hh | wc -w
+
+aurlocal: fspcc-$(VER).tar.gz
+	python create_pkgbuild.py local $(VER)
+
+aur:
+	-rm fspcc-$(VER).tar.gz
+	wget "https://bitbucket.org/vmaffione/fspc/downloads/fspcc-$(VER).tar.gz"
+	python create_pkgbuild.py remote $(VER)
+
+# Create a tarball containing all the files necessary for the compilation
+# but not the generating files (e.g. fsp_parser.ypp, fsp_scanner.lpp, ecc.)
+fspcc-$(VER).tar.gz: $(TAR_CONTENT)
+	mkdir release
+	cp $(TAR_CONTENT) release
+	mv release/Makefile.gen release/Makefile  # rename the Makefile
+	tar -czvf fspcc-$(VER).tar.gz release
+	rm -rf release
+
+cleanaur:
+	-rm *.tar.gz PKGBUILD
+
+clc:
+	-rm *.gv *.lts *.png .*.png *.bfsp *.pdf $(GENERATED)

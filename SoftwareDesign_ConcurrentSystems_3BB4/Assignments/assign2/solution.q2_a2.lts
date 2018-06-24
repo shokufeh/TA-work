@@ -1,0 +1,75 @@
+const N = 3 // capacity of the bridge
+const B = 4 // number of baboons
+range T = 0..N
+range ID = 1..B
+
+/* A babboon that wants to gain access to the rope */
+BABBOON = (
+	enter ->exit -> BABBOON
+).
+
+/* Enter and Exit logic, modelling a Convoy */
+ENTER = E[1],
+	E[i:ID] = (
+		[i].enter -> E[i%B+1]
+).
+
+EXIT = EX[1],
+	EX[i:ID] = (
+		[i].exit -> EX[i%B+1]
+).
+
+/* A rope with a capacity of N slots */
+ROPE = ROPE[0][0], // initially empty
+	ROPE[nl:T][nr:T] = (
+		  when (nr == 0 && nl < N) left[ID].enter -> ROPE[nl+1][nr]
+ 		| when (nl >  0 && nl > 0) left[ID].exit -> ROPE[nl-1][nr]
+ 		| when (nl == 0 && nr < N) right[ID].enter-> ROPE[nl][nr+1] 
+	    | when (nr >  0 && nr > 0) right[ID].exit -> ROPE[nl][nr-1]
+). 
+
+// CAPACITY asserts that the capacity of the
+// rope is never exceeded
+property CAPACITY = CAPACITY[ 0 ],
+
+    CAPACITY[ current: 0 .. N ] = ( when current < N
+                                        {left, right}.[ID].enter ->
+                                        CAPACITY[ current+1 ]
+                                  
+                                  | when current >= 0
+                                        {left, right}.[ID].exit ->
+                                        CAPACITY[ current-1 ] ).
+
+/* ONEWAY property that dictates only one side
+   may enter the rope at any given time */
+property ONEWAY =(
+	left[ID].enter -> LEFT[1]
+    | right[ID].enter -> RIGHT[1]
+ ),
+	LEFT[i:ID] = (
+	  left[ID].enter -> LEFT[i+1]
+      |when(i==1)left[ID].exit -> ONEWAY
+ 	  |when(i>1) left[ID].exit -> LEFT[i-1]
+ ), 
+
+	RIGHT[i:ID]= (
+		right[ID].enter-> RIGHT[i+1]
+ 		|when(i==1)right[ID].exit -> ONEWAY
+ 		|when( i>1)right[ID].exit -> RIGHT[i-1]
+). 
+
+
+/* Main Model:
+ * 2 babboon sides
+ * a convoy of enter/exit 
+ * a rope of a capacity
+ * a property ONEWAY
+ */
+||SINGLEROPE = (  
+	{left,right}::[ID]:BABBOON ||
+	{left,right}: ENTER        || 
+	{left,right}: EXIT         ||
+	ROPE                       ||
+	ONEWAY                     ||
+    CAPACITY
+).

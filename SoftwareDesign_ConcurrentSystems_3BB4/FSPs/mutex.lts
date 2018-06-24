@@ -1,0 +1,59 @@
+const MaxValue   = 8
+range Value = 0 .. MaxValue
+
+COUNTER = COUNTER [ 0 ],
+
+	COUNTER[ current: Value ] = ( get[ current ] ->
+							      COUNTER[ current ]
+
+							    | sett[ new: Value ] ->
+								  COUNTER[ new ] ).
+
+AAoLAMBDA( N = 2 ) = ( start ->
+					   RUN[ 0 ] ),
+
+	RUN[ step: 0 .. N ] = ( when step  < N
+						    	random ->
+								a ->
+								counter.get[ current: Value ] ->
+								counter.sett[ current+1 ] ->
+								a ->
+								counter.get[ current_: Value ] ->
+								counter.sett[ current_+1 ] ->
+								RUN[ step+1 ]
+
+						  | when step  < N
+						    	random ->
+								skip ->
+								RUN[ step+1 ]
+								
+					      | when step == N
+					      		end ->
+								STOP )+{ counter.get[ Value ], counter.sett[ Value ] }.
+
+CD( N = 2 ) = ( start -> RUN[ 0 ] ),
+
+	RUN[ step: 0 .. N ] = ( when step  < N
+								c ->
+								counter.get[ current: Value ] ->
+								counter.sett[ current+1 ] ->
+								d ->
+								counter.get[ current_: Value ] ->
+								counter.sett[ current_+1 ] ->
+								RUN[ step+1 ]
+
+					      | when step == N
+								end ->
+								STOP )+{ counter.get[ Value ], counter.sett[ Value ] }.
+
+MAIN = ( one.start ->
+		 two.start ->
+		 one.join ->
+		 two.join ->
+		 main.counter.get[ current: Value ] ->
+		 STOP )+{ main.counter.get[ Value ], main.counter.sett[ Value ] }.
+
+||PROGRAM = (  MAIN 
+			|| one: AAoLAMBDA
+			|| two: CD
+			|| {one, two, main}::counter:COUNTER )/{ one.join/one.end, two.join/two.end }.

@@ -1,0 +1,1137 @@
+/*
+ *  fspc parser BISON template
+ *
+ *  Copyright (C) 2013-2014  Vincenzo Maffione
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+%name-prefix "fsp"
+
+%code top {
+/* This piece of code goes verbatim at the the top of the generated
+   parser implementation. */
+
+using namespace std;
+
+//#define YYERROR_VERBOSE
+
+}
+
+%skeleton "glr.cc" /* -*- C++ -*- */
+%require "2.6.90.8-d4fe"
+
+/* Generate a Generic LR parser, instead of a standard LR parser. We need
+   this to resolve shift/reduce conflicts at runtime. */
+%glr-parser
+
+/* Create a parser header file. This is needed because we define fsplex()
+   in another source file (the FLEX generated scanner source file). */
+%defines
+
+/* Name of the parser implementation file. */
+%output "fsp_parser.cpp"
+
+/* Write an extra output file containing verbose descriptions of the parser
+    states and what is done for each type of lookahead token in that state
+%verbose
+*/
+
+%define parser_class_name {FspParser}
+
+/* The parsing context. */
+%parse-param { FspDriver& driver }
+%locations
+%debug
+%error-verbose
+
+%code requires {
+/* This code will be added to the bison-generated header, included
+   (among the others) by the FLEX scanner. */
+
+#include <string>
+class FspDriver;
+
+namespace fsp {
+    class TreeNode;
+};
+}
+
+
+%{
+%}
+
+
+/* Bison fundamentally works by asking flex to get the next token, which it
+   returns as an object of type "YYSTYPE".  But tokens could be of any
+   arbitrary data type!  So we deal with that in Bison by defining a C union
+   holding each of the types of tokens that Flex could return, and have Bison
+   use that union instead of "int" for the definition of "YYSTYPE": */
+%union {
+    int int_value;
+    float float_value;
+    std::string *string_ptr;
+    TreeNode *node_ptr;
+}
+
+
+
+/* Define the terminal symbols, token types we're going to use
+(in CAPS by convention), and associate each with a field of the union: */
+
+%token ENDOF 0 "end of file"
+%token IF "if"
+%token ELSE "else"
+%token THEN "then"
+%token WHEN "when"
+%token CONST "const"
+%token RANGE "range"
+%token SET "set"
+%token ARROW "->"
+%token DOTDOT ".."
+%token END "END"
+%token STOP "STOP"
+%token ERROR "ERROR"
+%token PROPERTY "property"
+%token PROGRESS "progress"
+%token MENU "menu"
+%token FORALL "forall"
+%token SHARING "::"
+%token OR "||"
+%token AND "&&"
+%token EQUAL "=="
+%token NOTEQUAL "!="
+%token LOE "<="
+%token GOE ">="
+%token LSHIFT "<<"
+%token RSHIFT ">>"
+%token EXPECT_RANGE "$r"
+%token EXPECT_SET "$s"
+%token <int_value> INTEGER "integer"
+%token <string_ptr> UpperCaseID "upper case identifier"
+%token <string_ptr> LowerCaseID "lower case identifer"
+%token <float_value> FLOAT "float"
+
+/* Non-terminal symbols. */
+%type <node_ptr> fsp_description fsp_definition
+%type <node_ptr> constant_def range_def set_def
+%type <node_ptr> composite_def param_OPT param parameter_list parameter
+%type <node_ptr> property_OPT progress_def menu_def
+%type <node_ptr> integer upper_case_id lower_case_id
+%type <node_ptr> expression base_expression
+%type <node_ptr> parameter_id process_id progress_id
+%type <node_ptr> variable constant_id range_id set_id
+%type <node_ptr> const_parameter_id menu_id
+
+%type <node_ptr> set set_elements set_expr
+%type <node_ptr> action_labels
+%type <node_ptr> alphabet_extension_OPT
+%type <node_ptr> action_range guard_OPT
+%type <node_ptr> range range_expr
+%type <node_ptr> index_ranges_OPT index_ranges indices_OPT indices
+
+%type <node_ptr> choice action_prefix prefix_actions
+%type <node_ptr> process_body local_process local_process_defs 
+%type <node_ptr> local_process_def
+%type <node_ptr> sequential_composition base_local_process else_OPT
+
+%type <node_ptr> process_def
+
+%type <node_ptr> seq_process_list process_ref_seq
+%type <node_ptr> argument_list argument_OPT
+%type <node_ptr> process_ref composite_body parallel_composition
+%type <node_ptr> composite_else_OPT
+%type <node_ptr> labeling_OPT sharing_OPT
+%type <node_ptr> relabel_OPT relabel_def relabel_defs braces_relabel_defs
+%type <node_ptr> hiding_OPT hiding priority_OPT priority
+
+%printer    { yyoutput << *$$; } <string_ptr>
+%destructor { /*delete $$;*/ } <string_ptr>
+%printer    { yyoutput << $$; } <int_value>
+
+%{
+
+/* Definition of the FspTranslator class & callbacks */
+#include "fsp_driver.hpp"
+
+/* The lex prototype. */
+#include "fsplex_declaration.hpp"
+
+/* TreeNode classes and subclasses. */
+#include "tree.hpp"
+
+using namespace fsp;
+
+%}
+
+%initial-action
+{
+  /* Initialize the initial location. */
+  @$.begin.filename = @$.end.filename = &driver.remove_file;
+}
+
+%%
+
+/* Start symbol: an arbitrary long list of fsp_definitions */
+fsp_description:
+    fsp_definition {
+        driver.tree = $$ = new RootNode();
+        $$->addChild($1, @1);
+    }
+    | fsp_description fsp_definition {
+        $1->addChild($2, @2);
+        driver.tree = $$ = $1;
+    }
+    ;
+
+/* All the possible type of fsp_definitions */
+fsp_definition:
+    constant_def
+    | range_def
+    | set_def
+    | progress_def
+    | process_def
+    | composite_def
+    | menu_def
+    ;
+
+
+/* Action labels TODO: fix */
+action_labels:
+    lower_case_id {
+	$$ = new ActionLabelsNode();
+        $$->addChild($1, @1);
+    }
+    | set {
+	$$ = new ActionLabelsNode();
+        $$->addChild($1, @1);
+    }
+    | action_labels '.' lower_case_id {
+        $$ = $1;
+        $$->addChild(new PeriodNode(), @2);
+        $$->addChild($3, @3);
+    }
+    | action_labels '.' set {
+        $$ = $1;
+        $$->addChild(new PeriodNode(), @2);
+        $$->addChild($3, @3);
+    }
+    | action_labels '[' action_range ']' {
+        $$ = $1;
+        $$->addChild(new OpenSquareNode(), @2);
+        $$->addChild($3, @3);
+        $$->addChild(new CloseSquareNode(), @4);
+    }
+    ;
+
+set:
+    EXPECT_SET set_id {
+	$$ = new SetNode();
+	$$->addChild($2, @2);
+    }
+    | set_expr {
+	$$ = new SetNode();
+	$$->addChild($1, @1);
+    }
+    ;
+
+set_expr:
+    '{' set_elements '}' {
+	$$ = new SetExprNode();
+	$$->addChild(new OpenCurlyNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new CloseCurlyNode(), @3);
+    }
+    ;
+
+range:
+    EXPECT_RANGE range_id {
+	$$ = new RangeNode();
+	$$->addChild($2, @2);
+    }
+    | range_expr {
+	$$ = new RangeNode();
+	$$->addChild($1, @1);
+    }
+    ;
+
+action_range:
+    expression {
+	$$ = new ActionRangeNode();
+	$$->addChild($1, @1);
+    }
+    | range {
+	$$ = new ActionRangeNode();
+	$$->addChild($1, @1);
+    }
+    | set {
+	$$ = new ActionRangeNode();
+	$$->addChild($1, @1);
+    }
+    | variable ':' range {
+	$$ = new ActionRangeNode();
+	$$->addChild($1, @1);
+	$$->addChild(new ColonNode(), @2);
+	$$->addChild($3, @3);
+    }
+    | variable ':' set {
+	$$ = new ActionRangeNode();
+	$$->addChild($1, @1);
+	$$->addChild(new ColonNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+range_expr:
+    expression DOTDOT expression {
+	$$ = new RangeExprNode();
+	$$->addChild($1, @1);
+	$$->addChild(new DotDotNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+
+/* Const, Range, Set */
+constant_def:
+    CONST constant_id '=' expression {
+	$$ = new ConstantDefNode();
+	$$->addChild(new ConstKwdNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new AssignNode(), @3);
+	$$->addChild($4, @4);
+    };
+
+range_def:
+    RANGE EXPECT_RANGE range_id '=' expression DOTDOT expression {
+        /* @3 */
+	$$ = new RangeDefNode();
+	$$->addChild(new RangeKwdNode(), @1);
+	$$->addChild($3, @3);
+	$$->addChild(new AssignNode(), @4);
+	$$->addChild($5, @5);
+	$$->addChild(new DotDotNode(), @6);
+	$$->addChild($7, @7);
+    };
+
+set_def:
+    SET EXPECT_SET set_id '=' set_expr {
+        /* @3 */
+	$$ = new SetDefNode();
+	$$->addChild(new SetKwdNode(), @1);
+	$$->addChild($3, @3);
+	$$->addChild(new AssignNode(), @4);
+	$$->addChild($5, @5);
+    };
+
+set_elements:
+    action_labels {
+	$$ = new SetElementsNode();
+	$$->addChild($1, @1);
+    }
+    | set_elements ',' action_labels {
+        $$ = $1;
+	$$->addChild(new CommaNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+
+/* Processes */
+process_def:
+    property_OPT process_id param_OPT '=' process_body alphabet_extension_OPT relabel_OPT hiding_OPT '.' {
+	$$ = new ProcessDefNode();
+        $$->addChild($1, @1);
+	$$->addChild($2, @2);
+	$$->addChild($3, @3);
+	$$->addChild(new AssignNode(), @4);
+	$$->addChild($5, @5);
+	$$->addChild($6, @6);
+	$$->addChild($7, @7);
+	$$->addChild($8, @8);
+	$$->addChild(new PeriodNode(), @9);
+    }
+    ;
+
+property_OPT:
+    {
+        $$ = NULL;
+    }
+    | PROPERTY {
+        $$ = new PropertyNode();
+    }
+    ;
+
+process_body:
+    local_process {
+	$$ = new ProcessBodyNode();
+	$$->addChild($1, @1);
+    }
+    | local_process ',' local_process_defs {
+	$$ = new ProcessBodyNode();
+	$$->addChild($1, @1);
+	$$->addChild(new CommaNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+local_process_defs:
+    local_process_def {
+	$$ = new LocalProcessDefsNode();
+	$$->addChild($1, @1);
+    }
+    | local_process_defs ',' local_process_def {
+        $$ = $1;
+	$$->addChild(new CommaNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+local_process_def:
+    process_id index_ranges_OPT '=' local_process {
+	$$ = new LocalProcessDefNode();
+	$$->addChild($1, @1);
+	$$->addChild($2, @2);
+	$$->addChild(new AssignNode(), @3);
+	$$->addChild($4, @4);
+    }
+    ;
+
+alphabet_extension_OPT:
+    {
+	$$ = NULL;
+    }
+    | '+' set {
+	$$ = new AlphaExtNode();
+	$$->addChild(new OperatorNode("+"), @1);
+	$$->addChild($2, @2);
+    }
+    ;
+
+local_process:
+    base_local_process {
+	$$ = new LocalProcessNode();
+	$$->addChild($1, @1);
+    }
+    | sequential_composition {
+	$$ = new LocalProcessNode();
+	$$->addChild($1, @1);
+    }
+    | IF expression THEN local_process else_OPT {
+	$$ = new LocalProcessNode();
+	$$->addChild(new IfNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new ThenNode(), @3);
+	$$->addChild($4, @4);
+	$$->addChild($5, @5);
+    }
+    | '(' choice ')' {
+	$$ = new LocalProcessNode();
+	$$->addChild(new OpenParenNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new CloseParenNode(), @3);
+    }
+    ;
+
+else_OPT:
+    {
+	$$ = NULL;
+    }
+    | ELSE local_process {
+	$$ = new ProcessElseNode();
+	$$->addChild(new ElseNode(), @1);
+	$$->addChild($2, @2);
+    }
+
+base_local_process:
+    END {
+	$$ = new BaseLocalProcessNode();
+	$$->addChild(new EndNode(), @1);
+    }
+    | STOP {
+	$$ = new BaseLocalProcessNode();
+	$$->addChild(new StopNode(), @1);
+    }
+    | ERROR {
+	$$ = new BaseLocalProcessNode();
+	$$->addChild(new ErrorNode(), @1);
+    }
+    | process_id indices_OPT {
+	$$ = new BaseLocalProcessNode();
+	$$->addChild($1, @1);
+	$$->addChild($2, @2);
+    }
+    ;
+
+choice:
+    action_prefix {
+	$$ = new ChoiceNode();
+	$$->addChild($1, @1);
+    }
+    | choice '|' action_prefix {
+        $$ = $1;
+	$$->addChild(new OperatorNode("|"), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+action_prefix:
+    guard_OPT prefix_actions ARROW local_process {
+	$$ = new ActionPrefixNode();
+	$$->addChild($1, @1);
+	$$->addChild($2, @2);
+	$$->addChild(new ArrowNode(), @3);
+	$$->addChild($4, @4);
+    }
+    ;
+
+prefix_actions:
+    action_labels {
+	$$ = new PrefixActionsNode();
+	$$->addChild($1, @1);
+    }
+    | prefix_actions ARROW action_labels {
+        $$ = $1;
+	$$->addChild(new ArrowNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+guard_OPT:
+    {
+	$$ = NULL;
+    }
+    | WHEN expression {
+	$$ = new GuardNode();
+	$$->addChild(new WhenNode(), @1);
+	$$->addChild($2, @2);
+    }
+    ;
+
+indices_OPT:
+    {
+        $$ = new IndicesNode();
+    }
+    | indices {
+        $$ = $1;
+    }
+    ;
+
+indices:
+    '[' expression ']' {
+	$$ = new IndicesNode();
+	$$->addChild(new OpenSquareNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new CloseSquareNode(), @2);
+    }
+    | indices '[' expression ']' {
+        $$ = $1;
+	$$->addChild(new OpenSquareNode(), @2);
+	$$->addChild($3, @3);
+	$$->addChild(new CloseSquareNode(), @4);
+    }
+    ;
+
+index_ranges_OPT:
+    {
+        $$ = new IndexRangesNode();
+    }
+    | index_ranges {
+        $$ = $1;
+    }
+    ;
+
+index_ranges:
+    '[' action_range ']' {
+	$$ = new IndexRangesNode();
+	$$->addChild(new OpenSquareNode(), @1);
+	$$->addChild($2, @2);
+	$$->addChild(new CloseSquareNode(), @3);
+    }
+    | index_ranges '[' action_range ']' {
+        $$ = $1;
+	$$->addChild(new OpenSquareNode(), @2);
+	$$->addChild($3, @3);
+	$$->addChild(new CloseSquareNode(), @4);
+    }
+    ;
+
+sequential_composition:
+    seq_process_list ';' base_local_process {
+	$$ = new SeqCompNode();
+	$$->addChild($1, @1);
+	$$->addChild(new SemicolonNode(), @2);
+	$$->addChild($3, @3);
+    }
+    ;
+
+seq_process_list:
+    process_ref_seq {
+	$$ = new SeqProcessListNode();
+	$$->addChild($1, @1);
+    }
+    | seq_process_list ';' process_ref_seq {
+        $$ = $1;
+        $$->addChild(new SemicolonNode(), @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+process_ref_seq:
+    process_id argument_OPT {
+	$$ = new ProcessRefSeqNode();
+        $$->addChild($1, @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+argument_OPT:
+    {
+	$$ = NULL;
+    }
+    |'(' argument_list ')' {
+	@$ = @2;
+	$$ = new ArgumentsNode();
+        $$->addChild(new OpenParenNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new CloseParenNode(), @3);
+    }
+    ;
+
+argument_list:
+    expression {
+	$$ = new ArgumentListNode();
+        $$->addChild($1, @1);
+    }
+    | argument_list ',' expression {
+        $$ = $1;
+        $$->addChild(new CommaNode(), @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+
+/* Composite processes */
+composite_def:
+    OR process_id param_OPT '=' composite_body priority_OPT hiding_OPT '.' {
+	$$ = new CompositeDefNode();
+        $$->addChild(new OperatorNode("||"), @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+        $$->addChild(new AssignNode(), @4);
+        $$->addChild($5, @5);
+        $$->addChild($6, @6);
+        $$->addChild($7, @7);
+    }
+    ;
+
+composite_body:
+    sharing_OPT labeling_OPT process_ref relabel_OPT {
+	$$ = new CompositeBodyNode();
+        $$->addChild($1, @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+        $$->addChild($4, @4);
+    }
+    | sharing_OPT labeling_OPT '(' parallel_composition ')' relabel_OPT {
+	$$ = new CompositeBodyNode();
+        $$->addChild($1, @1);
+        $$->addChild($2, @2);
+        $$->addChild(new OpenParenNode(), @3);
+        $$->addChild($4, @4);
+        $$->addChild(new CloseParenNode(), @5);
+        $$->addChild($6, @6);
+    }
+    | FORALL index_ranges composite_body {
+	/* Here there is an extension to the original grammar, since
+	   we should have 'ranges' and not 'index_ranges'. */
+	$$ = new CompositeBodyNode();
+        $$->addChild(new ForallNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+    }
+    | IF expression THEN composite_body composite_else_OPT {
+	$$ = new CompositeBodyNode();
+        $$->addChild(new IfNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new ThenNode(), @3);
+        $$->addChild($4, @4);
+        $$->addChild($5, @5);
+    }
+    ;
+
+composite_else_OPT:
+    {
+	$$ = NULL;
+    }
+    | ELSE composite_body {
+	$$ = new CompositeElseNode();
+        $$->addChild(new ElseNode(), @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+parallel_composition:
+    composite_body {
+	$$ = new ParallelCompNode();
+        $$->addChild($1, @1);
+    }
+    | parallel_composition OR composite_body {
+        $$ = $1;
+        $$->addChild(new OperatorNode("||"), @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+process_ref:
+    process_id argument_OPT {
+	$$ = new ProcessRefNode();
+        $$->addChild($1, @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+sharing_OPT:
+    {
+	$$ = NULL;
+    }
+    | action_labels SHARING {
+	$$ = new SharingNode();
+        $$->addChild($1, @1);
+        $$->addChild(new DoubleColonNode(), @2);
+    }
+    ;
+
+labeling_OPT:
+    {
+	$$ = NULL;
+    }
+    | action_labels ':' {
+	$$ = new LabelingNode();
+        $$->addChild($1, @1);
+        $$->addChild(new ColonNode(), @2);
+    }
+    ;
+
+priority_OPT:
+    {
+	$$ = NULL;
+    }
+    | priority {
+	$$ = $1;
+    }
+    ;
+
+priority:
+    RSHIFT set {
+	$$ = new PrioritySNode();
+        $$->addChild(new OperatorNode(">>"), @1);
+        $$->addChild($2, @2);
+    }
+    | LSHIFT set {
+	$$ = new PrioritySNode();
+        $$->addChild(new OperatorNode("<<"), @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+
+/* Parameters */
+param_OPT:
+    {
+        $$ = NULL;
+    }
+    | param {
+        $$ = $1;
+    }
+    ;
+
+param:
+    '(' parameter_list ')' {
+        $$ = new ParamNode();
+        $$->addChild(new OpenParenNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new CloseParenNode(), @3);
+    }
+    ;
+
+parameter_list:
+    parameter {
+        $$ = new ParameterListNode();
+        $$->addChild($1, @1);
+    }
+    | parameter_list ',' parameter {
+        $$ = $1;
+        $$->addChild(new CommaNode(), @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+parameter:
+    parameter_id '=' expression {
+        /* @1 @3 */
+        $$ = new ParameterNode();
+        $$->addChild($1, @1);
+        $$->addChild(new AssignNode(), @2);
+        $$->addChild($3, @3);
+    }	
+    ;
+
+
+/* Re-Labeling and Hiding */
+relabel_OPT: {
+	$$ = NULL;
+    }
+    | '/' braces_relabel_defs {
+	$$ = new RelabelingNode();
+        $$->addChild(new SlashNode(), @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+braces_relabel_defs:
+    '{' relabel_defs '}' {
+	$$ = new BracesRelabelDefsNode();
+        $$->addChild(new OpenCurlyNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new CloseCurlyNode(), @3);
+    }
+    ;
+
+relabel_defs:
+    relabel_def {
+	$$ = new RelabelDefsNode();
+        $$->addChild($1, @1);
+    }
+    | relabel_defs ',' relabel_def {
+        $$ = $1;
+        $$->addChild(new CommaNode(), @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+relabel_def:
+    action_labels '/' action_labels {
+        $$ = new RelabelDefNode();
+        $$->addChild($1, @1);
+        $$->addChild(new SlashNode(), @2);
+        $$->addChild($3, @3);
+    }
+    | FORALL index_ranges braces_relabel_defs {
+        $$ = new RelabelDefNode();
+        $$->addChild(new ForallNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+    }
+    ;
+
+hiding_OPT:
+    {
+	$$ = NULL;
+    }
+    | hiding {
+	$$ = $1;
+    }
+    ;
+
+hiding:
+    '\\' set {
+        $$ = new HidingInterfNode();
+        $$->addChild(new HidingNode(), @1);
+        $$->addChild($2, @2);
+    }
+    | '@' set {
+        $$ = new HidingInterfNode();
+        $$->addChild(new InterfNode(), @1);
+        $$->addChild($2, @2);
+    }
+    ;
+
+
+/* Progress and Menu (Property is included into process_def). */
+progress_def:
+    PROGRESS progress_id index_ranges_OPT '=' set {
+        $$ = new ProgressDefNode();
+        $$->addChild(new ProgressKwdNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+        $$->addChild(new AssignNode(), @4);
+        $$->addChild($5, @5);
+    }
+    | PROGRESS progress_id index_ranges_OPT '=' IF set THEN set {
+        $$ = new ProgressDefNode();
+        $$->addChild(new ProgressKwdNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild($3, @3);
+        $$->addChild(new AssignNode(), @4);
+        $$->addChild(new IfNode(), @5);
+        $$->addChild($6, @6);
+        $$->addChild(new ThenNode(), @7);
+        $$->addChild($8, @8);
+    }
+    ;
+
+menu_def:
+    MENU menu_id '=' set {
+        $$ = new MenuDefNode();
+        $$->addChild(new MenuKwdNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new AssignNode(), @3);
+        $$->addChild($4, @4);
+    }
+    ;
+
+
+%left OR;
+%left AND;
+%left '|';
+%left '^';
+%left '&';
+%left EQUAL NOTEQUAL;
+%left '<' '>' LOE GOE;
+%left LSHIFT RSHIFT;
+%left '+' '-';
+%left '*' '/' '%';
+
+
+/* An expression: standard operators and priorities. */
+expression:
+    '(' expression ')' {
+	$$ = new ExpressionNode();
+        $$->addChild(new OpenParenNode(), @1);
+        $$->addChild($2, @2);
+        $$->addChild(new CloseParenNode(), @3);
+    }
+    | expression OR expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("||"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression AND expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("&&"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '|' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("|"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '^' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("^"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '&' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("&"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression EQUAL expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("=="), @2);
+        $$->addChild($3, @3);
+    }
+    | expression NOTEQUAL expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("!="), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '<' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("<"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '>' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode(">"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression LOE expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("<="), @2);
+        $$->addChild($3, @3);
+    }
+    | expression GOE expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode(">="), @2);
+        $$->addChild($3, @3);
+    }
+    | expression LSHIFT expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("<<"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression RSHIFT expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode(">>"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '+' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("+"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '-' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("-"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '*' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("*"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '/' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("/"), @2);
+        $$->addChild($3, @3);
+    }
+    | expression '%' expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+        $$->addChild(new OperatorNode("%"), @2);
+        $$->addChild($3, @3);
+    }
+    | base_expression {
+        $$ = new ExpressionNode();
+        $$->addChild($1, @1);
+    }
+    | '+' base_expression {
+        $$ = new ExpressionNode();
+        $$->addChild(new OperatorNode("+"), @2);
+        $$->addChild($2, @2);
+    }
+    | '-' base_expression {
+        $$ = new ExpressionNode();
+        $$->addChild(new OperatorNode("-"), @2);
+        $$->addChild($2, @2);
+    }
+    | '!' base_expression {
+        $$ = new ExpressionNode();
+        $$->addChild(new OperatorNode("!"), @2);
+        $$->addChild($2, @2);
+    }
+    ;
+
+base_expression:
+    integer {
+        $$ = new BaseExpressionNode();
+        $$->addChild($1, @1);
+    }
+    | variable {
+        $$ = new BaseExpressionNode();
+        $$->addChild($1, @1);
+    }
+    | const_parameter_id {
+        $$ = new BaseExpressionNode();
+        $$->addChild($1, @1);
+    }
+    ;
+
+/* Integer token. */
+integer: INTEGER {
+        IntegerNode *in = new IntegerNode();
+
+        in->val = $1;
+        $$ = in;
+    };
+
+/* Lower case id token. */
+lower_case_id: LowerCaseID {
+        LowerCaseIdNode *lc = new LowerCaseIdNode();
+
+        lc->content = *$1;
+        $$ = lc;
+};
+
+/* Upper case id token. */
+upper_case_id: UpperCaseID {
+        UpperCaseIdNode *uc = new UpperCaseIdNode();
+
+        uc->content = *$1;
+        $$ = uc;
+};
+
+/* Some useful alias for LowerCaseID and UpperCaseID. */
+variable: lower_case_id {
+        $$ = new VariableIdNode();
+        $$->addChild($1, @1);
+    };
+
+constant_id: upper_case_id {
+        $$ = new ConstantIdNode();
+        $$->addChild($1, @1);
+    };
+
+range_id: upper_case_id {
+        $$ = new RangeIdNode();
+        $$->addChild($1, @1);
+    };
+
+set_id: upper_case_id {
+        $$ = new SetIdNode();
+        $$->addChild($1, @1);
+    };
+
+const_parameter_id: upper_case_id {
+        $$ = new ConstParameterIdNode();
+        $$->addChild($1, @1);
+    };
+
+parameter_id: upper_case_id {
+        $$ = new ParameterIdNode();
+        $$->addChild($1, @1);
+    };
+
+process_id: upper_case_id {
+        $$ = new ProcessIdNode();
+        $$->addChild($1, @1);
+    };
+
+progress_id: upper_case_id {
+        $$ = new ProgressIdNode();
+        $$->addChild($1, @1);
+    };
+
+menu_id: upper_case_id {
+        $$ = new MenuIdNode();
+        $$->addChild($1, @1);
+    };
+
+%%
+
+void fsp::FspParser::error (const fsp::FspParser::location_type& l,
+	                   const std::string& m)
+{
+    driver.error(l, m);
+}
+

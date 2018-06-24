@@ -1,0 +1,3 @@
+/* A recursive process. */
+P(K=3) = (a[K]->L),
+   L = if (K==0) then END else P(K-1);END.

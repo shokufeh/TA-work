@@ -1,0 +1,58 @@
+const N = 5	//Max number of monkeys allowed on the rope
+range R = 0..N
+range ID = 1..N
+
+MONKEY = ( enter -> exit -> MONKEY).
+
+ONEBYONE1 = A[1],				//Monkeys cannot pass eachother upon entering the rope
+
+A[i:ID] = ([i].enter -> A[i%N+1]
+
+).
+
+
+ONEBYONE2 = A[1],				//Monkeys cannot pass eachother upon exiting the rope
+
+A[i:ID] = ([i].exit -> A[i%N+1]
+
+).
+
+||SAMEDIRECTION = ([ID]:MONKEY || ONEBYONE1 || ONEBYONE2).		//Monkeys travelling in the same direction
+
+||MONKEYS = ( left:SAMEDIRECTION || right:SAMEDIRECTION).		//Creates left and right populations of monkeys travelling in the same direction
+
+ROPE = ROPE[0][0],	//Models the actions on the rope
+
+ROPE[nL:R] [nR:R] = ( when (nR == 0)							//Left can enter only when number of right monkeys on the rope are 0 
+						left[ID].enter -> ROPE[nL + 1] [nR]			
+						| left[ID].exit -> ROPE[nL -1] [nR]
+					|
+					  when (nL ==0)
+						right[ID].enter -> ROPE[nL] [nR + 1]		//Right can only enter when number of left monkeys on the rope are 0
+						| right[ID].exit -> ROPE[nL] [nR -1]			
+					).
+
+property ONESIDE_ONROPE = ( left[ID].enter -> LEFT[1]			//Only oneside of the monkeys (left or right) can be on the rope at one time
+				  | right[ID].enter -> RIGHT[1]
+				  ),
+
+LEFT[i:ID] = (left[ID].enter -> LEFT[i+1]					//Either left on the rope
+		  | when (i==1) left[ID].exit -> ONESIDE_ONROPE
+		  | when (i>1) left[ID].exit -> LEFT[i-1]
+		  ),
+
+RIGHT[i:ID] = (right[ID].enter -> RIGHT[i+1]			//Either right on the rope
+		  | when (i==1) right[ID].exit -> ONESIDE_ONROPE
+		  | when (i>1) right[ID].exit -> RIGHT[i-1]
+		  ).
+
+
+||FINAL = (MONKEYS || ROPE || ONESIDE_ONROPE).		//Final process
+
+
+progress RIGHT = {right [id:ID].enter}
+progress LEFT = {left [id:ID].enter}
+
+progress RIGHT2 = {right [id:ID].exit}
+progress LEFT2 = {left [id:ID].exit}
+

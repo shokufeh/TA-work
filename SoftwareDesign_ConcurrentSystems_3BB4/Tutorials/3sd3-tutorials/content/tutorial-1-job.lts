@@ -1,0 +1,6 @@
+/**Exercise: II Job-pp.33**/
+
+JOB = START,
+START=(arrive   ->AtOffice),
+AtOffice =(work ->WorkDone),
+WorkDone =(leave ->START).

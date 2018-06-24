@@ -1,0 +1,27 @@
+CC=g++
+DEBUG=-g
+CFLAGS=$(DEBUG) -Wall
+CXXFLAGS=$(DEBUG) -Wall -std=c++11
+# Optimization flags, e.g. "-O2"
+CFLAGS += $(OPTIMIZE)
+CXXFLAGS += $(OPTIMIZE)
+
+all: fspcc
+
+### INITGEN ###
+
+# This rule has been made explicit only to avoid compiler warnings (-Wall)
+fsp_scanner.o: fsp_scanner.cpp
+	$(CC) $(DEBUG) $(OPTIMIZE) -c fsp_scanner.cpp
+
+# This rule has been made explicit only to avoid compiler warnings (-Wall)
+preproc.o: preproc.cpp
+	$(CC) $(DEBUG) $(OPTIMIZE) -c preproc.cpp
+
+# This rule has been made explicit only to avoid compiler warnings (-Wall)
+sh_scanner.o: sh_scanner.cpp
+	$(CC) $(DEBUG) $(OPTIMIZE) -c sh_scanner.cpp
+
+fspcc: $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) -o fspcc -lncurses
+

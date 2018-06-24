@@ -1,0 +1,44 @@
+/*  Copyright (C) 2011 Valentin Cassano <cassanv@mcmaster.ca>
+
+     This file is free software; you can redistribute it and/or modify
+     it under the terms of the GNU General Public License as published by
+     the Free Software Foundation; either version 2 of the License, or
+     (at your option) any later version.
+ 
+     This program is distributed in the hope that it will be useful,
+     but WITHOUT ANY WARRANTY; without even the implied warranty of
+     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+     GNU General Public License for more details.
+ 
+     You should have received a copy of the GNU General Public License
+     along with this program; if not, write to the Free Software
+     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+
+/* The following processes are intended to model
+ * the behavior of a simple pacemaker. */
+
+
+const N = 2
+
+HEART = (
+	beat -> HEART
+	| stop -> STOP
+	| fail[i: 0..N] -> FAILURE[i] ),
+
+	FAILURE[i: 0..N] = (
+		when i < 1 becalm -> HEART
+		| when i >= 1 worry -> FAILURE[i]
+		| shock -> HEART
+		| stop -> STOP )
+	/{ die/stop }
+	\{ die }.
+
+PACEMAKER = (
+	sense[i: 0..N] -> PACEMAKER[i] ),
+
+	PACEMAKER[i: 0..N] = (
+		when i == 0 skip -> PACEMAKER
+		| when i > 0 charge[i] -> shock -> PACEMAKER ).
+
+||PATIENT = ( HEART || PACEMAKER )
+	/{ sense/fail, becalm/skip }.

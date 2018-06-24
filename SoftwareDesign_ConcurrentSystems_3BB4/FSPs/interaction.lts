@@ -1,0 +1,19 @@
+AAoBB = ( start -> RUN ),
+
+	RUN = ( random -> AA
+		  | random -> BB ),
+
+	AA  = ( a -> a -> RUN ),
+
+	BB  = ( b -> B ),
+	B   = ( b -> RUN ).
+
+CD = ( start -> RUN ),
+
+	RUN = ( c -> D ),
+
+	D   = ( d -> RUN ).
+
+Main = ( one.start -> two.start -> STOP ).
+
+||Program = ( Main || one:AAoBB || two:CD ).

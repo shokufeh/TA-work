@@ -1,0 +1,111 @@
+const MaxInt = 1
+range Nat    = 0 .. MaxInt
+
+LOCK = ( acquire ->
+         release ->
+         LOCK ).
+
+BALANCE = BALANCE[ 0 ],
+
+    BALANCE[ current: Nat ] = ( increase[ amount: Nat ] ->
+                                
+                                if
+                                    current+amount <= MaxInt
+                                then
+                                    BALANCE[ current+amount ]
+                                else
+                                    ( overflow.exception ->
+                                      BALANCE[ current ] )
+                              
+                              | decrease[ amount: Nat ] ->
+                                
+                                if
+                                    current-amount >= 0
+                                then
+                                    BALANCE[ current-amount ]
+                                else
+                                    ( insufficient.funds.exception ->
+                                      BALANCE[ current ] ))
+\{
+    overflow.exception
+}.
+
+WITHDRAW = ( call ->
+             total[ amount: Nat ] ->
+             WITHDRAW[ amount ] ),
+
+    WITHDRAW[ amount: Nat ] = (  lock.acquire ->
+                                 balance.decrease[ amount ] ->
+                                 
+                                 ( lock.release ->
+                                   return ->
+                                   WITHDRAW
+             
+                                 | balance.insufficient.funds.exception ->
+                                   lock.release ->
+                                   return ->
+                                   WITHDRAW ))
++{
+    balance.increase[ amount: Nat ]
+}.
+
+DEPOSIT = ( call ->
+            total[ amount: Nat ] ->
+            lock.acquire ->
+            balance.increase[ amount ] ->
+            lock.release ->
+            return ->
+            DEPOSIT )
++{
+    balance.decrease[ amount: Nat ],
+    balance.insufficient.funds.exception
+}.
+
+TRANSFER = ( call ->
+             total[ amount: Nat ] ->
+             TRANSFER[ amount ] ),
+
+    TRANSFER[ amount: Nat ] = ( lock.acquire ->
+                                balance.decrease[ amount ] ->
+                                
+                                ( formal.parameter.account.deposit.call ->
+                                  formal.parameter.account.deposit.total[ amount ] ->
+                                  formal.parameter.account.deposit.return ->
+                                  lock.release ->
+                                  return ->
+                                  TRANSFER
+             
+                                | balance.insufficient.funds.exception ->
+                                  lock.release ->
+                                  return ->
+                                  TRANSFER ))
++{
+    balance.increase[ amount: Nat ]
+}.
+                                
+||ACCOUNT = ( { withdraw, deposit, transfer }:: lock: LOCK
+           || { withdraw, deposit, transfer }:: balance: BALANCE
+           || withdraw: WITHDRAW
+           || deposit:  DEPOSIT
+           || transfer: TRANSFER )
+<<{
+    { withdraw, transfer }.balance.insufficient.funds.exception
+}
+\{
+    deposit.balance.decrease[ amount: Nat ],
+    deposit.balance.insufficient.funds.exception,
+    { withdraw, transfer }.balance.increase[ amount: Nat ]
+}.
+
+||DEADLOCKSCENARIO = ({ checking, savings }: ACCOUNT )
+// Transfer money from a savings account into a checking account
+// and from the same checking account to the same savings account
+/{
+    savings.deposit.call                /checking.transfer.formal.parameter.account.deposit.call,
+    savings.deposit.total[ amount: Nat ]/checking.transfer.formal.parameter.account.deposit.total[ amount ],
+    savings.deposit.return              /checking.transfer.formal.parameter.account.deposit.return,
+    
+    checking.deposit.call                /savings.transfer.formal.parameter.account.deposit.call,
+    checking.deposit.total[ amount: Nat ]/savings.transfer.formal.parameter.account.deposit.total[ amount ],
+    checking.deposit.call                /savings.transfer.formal.parameter.account.deposit.return
+}.

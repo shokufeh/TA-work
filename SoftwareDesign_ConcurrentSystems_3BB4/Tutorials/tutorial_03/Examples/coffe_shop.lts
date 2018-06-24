@@ -1,0 +1,36 @@
+/* Consider the following situation:
+ *
+ * A vending machine is capable of dispensing drinks
+ * after the insertion of a coin. It will dispense
+ * either coffee or tea (but not both).
+ *
+ * The behavior of this vending machine can be described
+ * (at least) in two different ways (detailed below). */
+
+VENDING_MACHINE1 = ( coin -> ( coffee -> VENDING_MACHINE1 | tea -> VENDING_MACHINE1 ) ).
+
+VENDING_MACHINE2 = ( coin -> coffee -> VENDING_MACHINE2 | coin -> tea -> VENDING_MACHINE2 ).
+
+/* Then, consider a customer who really dislikes tea.
+ *
+ * The behavior of this customer can be described as: */
+
+CUSTOMER = ( coin -> coffee -> CUSTOMER )+{ tea }.
+
+/* The extension +{ tea } represents the fact that,
+ * even though this customer may know how to ask for tea,
+ * he/she will be unwillling to do such thing.
+ *
+ * Thence, consider the following coffee shops.
+ *
+ * Coffee Shop 1 uses vending machines of type 1, */
+
+||COFFEE_SHOP1 = ( CUSTOMER || VENDING_MACHINE1 ).
+
+/* whereas Coffee Shop 2 uses vending machines of
+ * type 2. */
+
+||COFFEE_SHOP2 = ( CUSTOMER || VENDING_MACHINE2 ).
+
+/* Which of these coffee shops will you rather go
+ * in case you really dislike tea? */

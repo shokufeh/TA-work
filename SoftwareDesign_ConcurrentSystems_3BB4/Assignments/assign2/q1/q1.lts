@@ -1,0 +1,23 @@
+COUNTER (N=3) = COUNTER[0],
+
+COUNTER [value: 0..N] = (when (value < N) inc -> COUNTER[value+1]
+						|when (value == N) restart -> COUNTER[0]).
+
+START = (inc -> throw -> out[0] -> finished -> START
+		|inc -> throw -> out[1] -> finished -> START
+		|inc -> throw -> out[2] -> finished -> START
+		|inc -> throw -> out[3] -> finished -> START
+		|inc -> throw -> out[4] -> finished -> START
+		|inc -> throw -> out[5] -> finished -> START
+		|inc -> throw -> out[6] -> finished -> START
+		|inc -> throw -> out[7] -> finished -> START
+		|inc -> throw -> out[8] -> finished -> START
+		|inc -> throw -> out[9] -> finished -> START
+		).
+
+
+
+
+USER = (inc -> throw -> finished -> USER) / {finish/finished,finish/{a.finish,b.finish,c.finish}} .
+
+||SHARE = ( a:START || b:START || c:START || {a,b,c}::USER|| {a,b,c}::COUNTER) / {finish/{a.finished,b.finished,c.finished},restart/{a.restart,b.restart,c.restart}}.
